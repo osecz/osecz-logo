@@ -2,8 +2,10 @@
 
 """Analyze luminance and contrast ratios of colors."""
 
-
 # Reference: https://www.w3.org/TR/WCAG20-TECHS/G17.html#G17-tests
+
+
+from math import sqrt
 
 
 def srgb_to_linear(c):
@@ -31,29 +33,38 @@ def luminance(color_code):
     return (0.2126 * r + 0.7152 * g + 0.0722 * b)
 
 
-def analyze_color(color_code):
-    """Print luminance and contrast details of colors."""
-    lum = luminance(color_code)
+def contrast(L1, L2):
+    """Compute contrast between two colors and/or luminance values."""
+    if isinstance(L1, str):
+        L1 = luminance(L1)
 
-    # Contrast on white background.
-    cow = (luminance('#ffffff') + 0.05) / (lum + 0.05)
+    if isinstance(L2, str):
+        L2 = luminance(L2)
 
-    # Contrast on black background.
-    cob = (lum + 0.05) / (luminance('#000000') + 0.05)
+    if L1 < L2:
+        L1, L2 = L2, L1
 
-    # Print the results.
-    print('{}: rgb: lum: {:.4f}; cow: {:5.2f}; cob: {:5.2f}'
-          .format(color_code, lum, cow, cob))
+    a = 0.05
+    return (L1 + a) / (L2 + a)
 
 
-def analyze_colors(*color_codes):
+def analyze_colors(fg_colors, bg_colors):
     """Print luminance and contrast details of specified colors."""
-    for color_code in color_codes:
-        analyze_color(color_code)
-    html_preview(*color_codes[1:-1])
+    # Print header.
+    print('{:7}  {:>6}'.format('', 'Lum'), end='')
+    for bg in bg_colors:
+        print('  {:7}'.format(bg), end='')
+    print()
+
+    # Print computation.
+    for fg in fg_colors:
+        print('{:7}  {:6.4f}'.format(fg, luminance(fg)), end='')
+        for bg in bg_colors:
+            print('  {:7.2f}'.format(contrast(fg, bg)), end='')
+        print()
 
 
-def html_preview(*color_codes):
+def html_preview(fg_colors, bg_colors):
     """Generate an HTML to preview the specified colors."""
     html = [
         '<!DOCTYPE html>',
@@ -70,10 +81,10 @@ def html_preview(*color_codes):
         '<body>'
     ]
 
-    for bg in ['#ffffff', '#000000']:
+    for bg in bg_colors:
         html.append('')
         html.append('<div style="background: {}">'.format(bg))
-        for fg in color_codes:
+        for fg in fg_colors:
             html.append('  <div style="background: {}">{}</div>'.format(fg, fg))
         html.append('</div>')
 
@@ -88,19 +99,77 @@ def html_preview(*color_codes):
     print('Preview written to:', preview_filename)
 
 
+def neutral_luminance(c1, c2):
+    """Compute luminance with equal contrast with c1 and c2 (color codes)."""
+    a = 0.05
+    Lc1 = luminance(c1)
+    Lc2 = luminance(c2)
+    Ld, Lb = (Lc1, Lc2) if Lc1 <= Lc2 else (Lc2, Lc1)
+    Lc = sqrt(a*a + Lb*a + Ld*a + Lb*Ld) - a
+    return Lc
+
+
+def desired_luminance(desired_contrast_ratio, color):
+    """Luminance required to obtain desired contrast with color."""
+    a = 0.05
+    Lo = luminance(color)
+    Lc = desired_contrast_ratio * (Lo + a) - a
+    return Lc
+
+
 def main():
     """Print ideal luminance and analyze details of chosen colors."""
-    # Extra term for numerator and denominator as specified in WCAG 2.0.
-    x = 0.05
-
-    # Solving (1 + x) / (L + x) = (L + x) / x, we get L = sqrt(x^2 + x) - x.
-    print('Required luminance:', (x**2 + x)**0.5 - x) # 0.1791 approx.
+    # Luminance of background colors we will work with.
+    L_black = luminance('#000000')
+    L_gray3 = luminance('#303030')
+    L_white = luminance('#ffffff')
+    print('Luminance: black: {:6.4f}'.format(L_black))
+    print('Luminance: gray3: {:6.4f}'.format(L_gray3))
+    print('Luminance: white: {:6.4f}'.format(L_white))
     print()
 
-    # Analyze the luminance and contrast of white, red, green, blue, and
-    # black. The shades of red, green, and blue were chosen such that
-    # their luminance values were close to 0.1791.
-    analyze_colors('#ffffff', '#ec0304', '#028902', '#166bff', '#000000')
+    # Contrast between background colors.
+    print('Contrast: white/black: {:7.4f}'
+          .format(contrast('#ffffff', '#000000')))
+    print('Contrast: white/gray8: {:7.4f}'
+          .format(contrast('#ffffff', '#808080')))
+    print('Contrast: white/gray3: {:7.4f}'
+          .format(contrast('#ffffff', '#303030')))
+    print()
+
+    # Luminance for neutral colors that have equal contrast with two
+    # background colors.
+    L_black_white_neutral = neutral_luminance('#000000', '#ffffff')
+    L_gray3_white_neutral = neutral_luminance('#303030', '#ffffff')
+    print('Neutral luminance: black/white: {:6.4f}'
+          .format(L_black_white_neutral))
+    print('Contrast with black: {:7.4f}'
+          .format(contrast(L_black_white_neutral, L_black)))
+    print('Contrast with white: {:7.4f}'
+          .format(contrast(L_black_white_neutral, L_white)))
+    print()
+    print('Neutral luminance: gray3/white: {:6.4f}'
+          .format(L_gray3_white_neutral))
+    print('Contrast with gray3: {:7.4f}'
+          .format(contrast(L_gray3_white_neutral, L_gray3)))
+    print('Contrast with white: {:7.4f}'
+          .format(contrast(L_gray3_white_neutral, L_white)))
+    print()
+
+    # Luminance of a bright color that has good contrast with gray3
+    # background.
+    L_desired = desired_luminance(4.5826, '#303030')
+    print('Desired luminance: gray3: {:6.4f}'.format(L_desired))
+    print('Contrast with gray3: {:7.4f}'.format(contrast(L_desired, L_gray3)))
+    print()
+
+    # Analyze the contrast of chosen foreground colors against chosen
+    # background colors.
+    fg_colors=['#ec0304', '#028902', '#166bff',
+               '#ff6657', '#02b102', '#129dff']
+    bg_colors=['#000000', '#303030', '#ffffff']
+    analyze_colors(fg_colors, bg_colors)
+    html_preview(fg_colors, bg_colors)
 
 
 if __name__ == '__main__':
